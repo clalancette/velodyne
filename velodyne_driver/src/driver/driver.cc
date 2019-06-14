@@ -35,8 +35,10 @@
  *  ROS driver implementation for the Velodyne 3D LIDARs
  */
 
-#include <string>
+#include <chrono>
 #include <cmath>
+#include <memory>
+#include <string>
 
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_ros/transform_listener.h>
@@ -51,11 +53,19 @@ namespace velodyne_driver
 
 VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
 {
-  // use private node handle to get parameters
-  this->get_parameter_or("frame_id", config_.frame_id, std::string("velodyne"));
+  this->declare_parameter("device_ip", std::string(""));
+  this->declare_parameter("gps_time", false);
+  this->declare_parameter("read_once", false);
+  this->declare_parameter("read_fast", false);
+  this->declare_parameter("repeat_delay", 0.0);
+  config_.frame_id = this->declare_parameter("frame_id", std::string("velodyne"));
+  config_.model = this->declare_parameter("model", std::string("64E"));
+  config_.rpm = this->declare_parameter("rpm", 600.0);
+  std::string dump_file = this->declare_parameter("pcap", std::string(""));
+  double cut_angle = this->declare_parameter("cut_angle", -0.01);
+  int udp_port = this->declare_parameter("port", (int) DATA_PORT_NUMBER);
 
   // get model name, validate string, determine packet rate
-  this->get_parameter_or("model", config_.model, std::string("64E"));
   double packet_rate;                   // packet frequency (Hz)
   std::string model_full_name;
   if ((config_.model == "64E_S2") ||
@@ -97,21 +107,14 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
 
   std::string deviceName(std::string("Velodyne ") + model_full_name);
 
-  this->get_parameter_or("rpm", config_.rpm, 600.0);
-  RCLCPP_INFO(this->get_logger(), "%s rotating at %d RPM", deviceName.c_str(), config_.rpm);
+  RCLCPP_INFO(this->get_logger(), "%s rotating at %f RPM", deviceName.c_str(), config_.rpm);
   double frequency = (config_.rpm / 60.0);     // expected Hz rate
 
   // default number of packets for each scan is a single revolution
   // (fractions rounded up)
-  config_.npackets = (int) ceil(packet_rate / frequency);
-  this->get_parameter("npackets", config_.npackets);
-  RCLCPP_INFO(this->get_logger(), "publishing " + std::to_string(config_.npackets) + " packets per scan");
+  config_.npackets = (int) std::ceil(packet_rate / frequency);
+  RCLCPP_INFO(this->get_logger(), "publishing %d packets per scan", config_.npackets);
 
-  std::string dump_file;
-  this->get_parameter_or("pcap", dump_file, std::string(""));
-
-  double cut_angle;
-  this->get_parameter_or("cut_angle", cut_angle, -0.01);
   if (cut_angle < 0.0)
     {
       RCLCPP_INFO(this->get_logger(), "Cut at specific angle feature deactivated.");
@@ -132,10 +135,8 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
   // which is used in velodyne packets
   config_.cut_angle = int((cut_angle*360/(2*M_PI))*100);
 
-  int udp_port;
-  this->get_parameter_or("port", udp_port, (int) DATA_PORT_NUMBER);
-  
   // initialize diagnostics
+#if 0
   diagnostics_.setHardwareID(deviceName);
   const double diag_freq = packet_rate/config_.npackets;
   diag_max_freq_ = diag_freq;
@@ -148,18 +149,19 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
                                                              &diag_max_freq_,
                                                              0.1, 10),
                                         TimeStampStatusParam()));
+#endif
   diag_timer_  = this->create_wall_timer(200ms, std::bind(&VelodyneDriver::diagTimerCallback, this));
   // open Velodyne input device or file
   if (dump_file != "")                  // have PCAP file?
     {
       // read data from packet capture file
-      input_.reset(new velodyne_driver::InputPCAP(shared_from_this() , udp_port,
+      input_.reset(new velodyne_driver::InputPCAP(this, udp_port,
                                                   packet_rate, dump_file));
     }
   else
     {
       // read data from live socket
-      input_.reset(new velodyne_driver::InputSocket(shared_from_this() , udp_port));
+      input_.reset(new velodyne_driver::InputSocket(this, udp_port));
     }
 
   // raw packet output topic
@@ -176,7 +178,7 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
 bool VelodyneDriver::poll(void)
 {
   // Allocate a new shared pointer for zero-copy sharing with other nodes.
-  std::shared_ptr<velodyne_msgs::msg::VelodyneScan> scan = std::make_shared<velodyne_msgs::msg::VelodyneScan>();
+  std::unique_ptr<velodyne_msgs::msg::VelodyneScan> scan = std::make_unique<velodyne_msgs::msg::VelodyneScan>();
   if(config_.cut_angle >= 0) //Cut at specific angle feature enabled
     {
       scan->packets.reserve(config_.npackets);
@@ -193,9 +195,9 @@ bool VelodyneDriver::poll(void)
 
           // Extract base rotation of first block in packet
           std::size_t azimuth_data_pos = 100*0+2;
-          int azimuth = *( (u_int16_t*) (&tmp_packet.data[azimuth_data_pos]));
+          int azimuth = *( (uint16_t*) (&tmp_packet.data[azimuth_data_pos]));
 
-          //if first packet in scan, there is no "valid" last_azimuth_
+          // if first packet in scan, there is no "valid" last_azimuth_
           if (last_azimuth_ == -1)
             {
               last_azimuth_ = azimuth;
@@ -232,12 +234,12 @@ bool VelodyneDriver::poll(void)
   RCLCPP_DEBUG(this->get_logger(), "Publishing a full Velodyne scan.");
   scan->header.stamp = scan->packets.back().stamp;
   scan->header.frame_id = config_.frame_id;
-  output_->publish(scan);
+  output_->publish(std::move(scan));
 
   // notify diagnostics that a message has been published, updating
   // its status
-  diag_topic_->tick(scan->header.stamp);
-  diagnostics_.update();
+  //diag_topic_->tick(scan->header.stamp);
+  //diagnostics_.update();
 
   return true;
 }
@@ -245,7 +247,7 @@ bool VelodyneDriver::poll(void)
 void VelodyneDriver::diagTimerCallback()
 {
   // Call necessary to provide an error when no velodyne packets are received
-  diagnostics_.update();
+  //diagnostics_.update();
 }
 
 } // namespace velodyne_driver

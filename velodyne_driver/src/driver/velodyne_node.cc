@@ -44,18 +44,19 @@ int main(int argc, char** argv)
   setvbuf(stdout, NULL, _IONBF, BUFSIZ);
 
   rclcpp::init(argc, argv);
-  
+
   // start the driver
   auto dvr = std::make_shared<velodyne_driver::VelodyneDriver>();
-  
+
   rclcpp::executors::SingleThreadedExecutor exec;
   exec.add_node(dvr);
 
-  // loop until shut down or end of file
-  while(rclcpp::ok() && dvr->poll())
+  while (rclcpp::ok() && dvr->poll())
     {
       exec.spin_once();
     }
+
+  rclcpp::shutdown();
 
   return 0;
 }

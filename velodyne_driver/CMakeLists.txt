@@ -6,39 +6,28 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
 endif()
 
-find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(rmw_implementation REQUIRED)
-find_package(rcl REQUIRED)
-find_package(velodyne_msgs REQUIRED)
-find_package(rcutils REQUIRED)
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic -ggdb3)
+endif()
+
+find_package(ament_cmake_ros REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
-find_package(diagnostic_updater REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(gtest REQUIRED)
-find_package(console_bridge REQUIRED)
+#find_package(diagnostic_updater REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(velodyne_msgs REQUIRED)
 
 # libpcap provides no pkg-config or find_package module:
 set(libpcap_LIBRARIES -lpcap)
 
-include_directories(include
-                    ${rclcpp_INCLUDE_DIRS}
-                    ${console_bridge_INCLUDE_DIRS}
-                    ${diagnostic_msgs_INCLUDE_DIRS}
-                    ${diagnostic_updater_INCLUDE_DIRS}
-                    ${rmw_implementation_INCLUDE_DIRS}
-                    ${velodyne_msgs_INCLUDE_DIRS}
-                    )
+include_directories(include)
 
 # compile the driver and input library
 add_subdirectory(src/lib)
 add_subdirectory(src/driver)
 
-
 install(DIRECTORY include/${PROJECT_NAME}/
-        DESTINATION include/${PROJECT_NAME}
-)
-
+        DESTINATION include/${PROJECT_NAME})
 
 install(DIRECTORY launch/
         DESTINATION share/${PROJECT_NAME}/launch)
@@ -48,6 +37,7 @@ install(PROGRAMS src/vdump
 
 #if (BUILD_TESTING)
   # find_package(ament_lint_auto REQUIRED)
+  # find_package(gtest REQUIRED)
   # ament_lint_auto_find_test_dependencies()
 
   # these dependencies are only needed for unit testing

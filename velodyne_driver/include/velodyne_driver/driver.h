@@ -33,17 +33,16 @@
 #ifndef VELODYNE_DRIVER_DRIVER_H
 #define VELODYNE_DRIVER_DRIVER_H
 
-#include <string>
-#include <cstdio>
 #include <memory>
+#include <string>
 
 #include <rclcpp/rclcpp.hpp>
-#include <rcutils/error_handling.h>
 
-#include <diagnostic_updater/diagnostic_updater.hpp>
-#include <diagnostic_updater/publisher.hpp>
+//#include <diagnostic_updater/diagnostic_updater.hpp>
+//#include <diagnostic_updater/publisher.hpp>
 
 #include <velodyne_driver/input.h>
+#include <velodyne_msgs/msg/velodyne_scan.hpp>
 
 namespace velodyne_driver
 {
@@ -79,10 +78,10 @@ private:
 
   /* diagnostics updater */
   rclcpp::TimerBase::SharedPtr diag_timer_;
-  diagnostic_updater::Updater diagnostics_;
+  //diagnostic_updater::Updater diagnostics_;
   double diag_min_freq_;
   double diag_max_freq_;
-  std::shared_ptr<diagnostic_updater::TopicDiagnostic> diag_topic_;
+  //std::shared_ptr<diagnostic_updater::TopicDiagnostic> diag_topic_;
 };
 
 }  // namespace velodyne_driver

@@ -53,14 +53,15 @@
 #ifndef VELODYNE_DRIVER_INPUT_H
 #define VELODYNE_DRIVER_INPUT_H
 
+#include <memory>
+#include <string>
+
 #include <unistd.h>
 #include <stdio.h>
 #include <pcap.h>
 #include <netinet/in.h>
-#include <string>
 
 #include <rclcpp/rclcpp.hpp>
-#include <rcutils/error_handling.h>
 
 #include <velodyne_msgs/msg/velodyne_packet.hpp>
 #include <velodyne_msgs/msg/velodyne_scan.hpp>
@@ -69,13 +70,12 @@ namespace velodyne_driver
 {
 
 static uint16_t DATA_PORT_NUMBER = 2368;      // default data port
-static uint16_t POSITION_PORT_NUMBER = 8308;  // default position port
 
 /** @brief Velodyne input base class */
 class Input
 {
 public:
-  Input(std::shared_ptr<rclcpp::Node> private_nh, uint16_t port);
+  Input(rclcpp::Node *private_nh, uint16_t port);
   virtual ~Input() {}
 
   /** @brief Read one Velodyne packet.
@@ -90,17 +90,18 @@ public:
                         const double time_offset) = 0;
 
 protected:
-  std::shared_ptr<rclcpp::Node> private_nh_;
+  rclcpp::Node *private_nh_;
   uint16_t port_;
   std::string devip_str_;
   bool gps_time_;
+  rclcpp::Clock::SharedPtr clock_;
 };
 
 /** @brief Live Velodyne input from socket. */
 class InputSocket: public Input
 {
 public:
-  InputSocket(std::shared_ptr<rclcpp::Node> private_nh,
+  InputSocket(rclcpp::Node *private_nh,
               uint16_t port = DATA_PORT_NUMBER);
   virtual ~InputSocket();
 
@@ -122,13 +123,10 @@ private:
 class InputPCAP: public Input
 {
 public:
-  InputPCAP(std::shared_ptr<rclcpp::Node> private_nh,
+  InputPCAP(rclcpp::Node *private_nh,
             uint16_t port = DATA_PORT_NUMBER,
             double packet_rate = 0.0,
-            std::string filename = "",
-            bool read_once = false,
-            bool read_fast = false,
-            double repeat_delay = 0.0);
+            std::string filename = "");
   virtual ~InputPCAP();
 
   virtual int getPacket(velodyne_msgs::msg::VelodynePacket *pkt,

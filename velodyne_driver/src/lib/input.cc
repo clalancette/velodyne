@@ -44,17 +44,22 @@
  *              PCAP dump
  */
 
-#include <unistd.h>
-#include <string>
+#include <cmath>
+#include <memory>
 #include <sstream>
+#include <string>
+
+#include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <poll.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/file.h>
+
 #include <velodyne_driver/input.h>
 #include <velodyne_driver/time_conversion.hpp>
+#include <velodyne_msgs/msg/velodyne_packet.hpp>
 
 namespace velodyne_driver
 {
@@ -70,12 +75,14 @@ namespace velodyne_driver
    *  @param private_nh ROS node handle for calling node.
    *  @param port UDP port number.
    */
-  Input::Input(std::shared_ptr<rclcpp::Node> private_nh, uint16_t port):
+  Input::Input(rclcpp::Node *private_nh, uint16_t port):
     private_nh_(private_nh),
     port_(port)
   {
-    private_nh->get_parameter_or("device_ip", devip_str_, std::string(""));
-    private_nh->get_parameter_or("gps_time", gps_time_, false);
+    clock_ = std::make_shared<rclcpp::Clock>();
+
+    private_nh->get_parameter("device_ip", devip_str_);
+    private_nh->get_parameter("gps_time", gps_time_);
     if (!devip_str_.empty())
       {
         RCLCPP_INFO(private_nh->get_logger(),"Only accepting packets from IP address: "
@@ -92,20 +99,20 @@ namespace velodyne_driver
    *  @param private_nh ROS private handle for calling node.
    *  @param port UDP port number
    */
-  InputSocket::InputSocket(std::shared_ptr<rclcpp::Node> private_nh, uint16_t port):
+  InputSocket::InputSocket(rclcpp::Node *private_nh, uint16_t port):
     Input(private_nh, port)
   {
     sockfd_ = -1;
 
     if (!devip_str_.empty())
       {
-        inet_aton(devip_str_.c_str(),&devip_);
+        ::inet_aton(devip_str_.c_str(),&devip_);
       }
 
     // connect to Velodyne UDP port
     RCLCPP_INFO(private_nh->get_logger(), "Opening UDP socket: port " + std::to_string(port));
 
-    sockfd_ = socket(PF_INET, SOCK_DGRAM, 0);
+    sockfd_ = ::socket(PF_INET, SOCK_DGRAM, 0);
     if (sockfd_ == -1)
       {
         perror("socket");               // TODO: ROS_ERROR errno
@@ -115,16 +122,16 @@ namespace velodyne_driver
     sockaddr_in my_addr;                     // my address information
     memset(&my_addr, 0, sizeof(my_addr));    // initialize to zeros
     my_addr.sin_family = AF_INET;            // host byte order
-    my_addr.sin_port = htons(port);          // port in network byte order
+    my_addr.sin_port = ::htons(port);          // port in network byte order
     my_addr.sin_addr.s_addr = INADDR_ANY;    // automatically fill in my IP
-  
-    if (bind(sockfd_, (sockaddr *)&my_addr, sizeof(sockaddr)) == -1)
+
+    if (::bind(sockfd_, (sockaddr *)&my_addr, sizeof(sockaddr)) == -1)
       {
         perror("bind");                 // TODO: ROS_ERROR errno
         return;
       }
-  
-    if (fcntl(sockfd_,F_SETFL, O_NONBLOCK|FASYNC) < 0)
+
+    if (::fcntl(sockfd_, F_SETFL, O_NONBLOCK|FASYNC) < 0)
       {
         perror("non-block");
         return;
@@ -136,14 +143,13 @@ namespace velodyne_driver
   /** @brief destructor */
   InputSocket::~InputSocket(void)
   {
-    (void) close(sockfd_);
+    (void) ::close(sockfd_);
   }
 
   /** @brief Get one velodyne packet. */
   int InputSocket::getPacket(velodyne_msgs::msg::VelodynePacket *pkt, const double time_offset)
   {
     // Either pass a nodehandle pointer or create a clock object instance
-    auto clock_ = std::make_shared<rclcpp::Clock>();
     double time1 = clock_->now().seconds();
 
     struct pollfd fds[1];
@@ -176,11 +182,13 @@ namespace velodyne_driver
         // poll() until input available
         do
           {
-            int retval = poll(fds, 1, POLL_TIMEOUT);
+            int retval = ::poll(fds, 1, POLL_TIMEOUT);
             if (retval < 0)             // poll() error?
               {
                 if (errno != EINTR)
-                  RCLCPP_ERROR(private_nh_->get_logger(), "poll() error: %s", strerror(errno));
+                  {
+                    RCLCPP_ERROR(private_nh_->get_logger(), "poll() error: %s", ::strerror(errno));
+                  }
                 return -1;
               }
             if (retval == 0)            // poll() timeout?
@@ -199,17 +207,16 @@ namespace velodyne_driver
 
         // Receive packets that should now be available from the
         // socket using a blocking read.
-        ssize_t nbytes = recvfrom(sockfd_, &pkt->data[0],
-                                  packet_size,  0,
-                                  (sockaddr*) &sender_address,
-                                  &sender_address_len);
+        ssize_t nbytes = ::recvfrom(sockfd_, &pkt->data[0],
+                                    packet_size,  0,
+                                    (sockaddr*) &sender_address,
+                                    &sender_address_len);
 
         if (nbytes < 0)
           {
             if (errno != EWOULDBLOCK)
               {
-                perror("recvfail");
-                RCLCPP_INFO(private_nh_->get_logger(), "recvfail");
+                RCLCPP_INFO(private_nh_->get_logger(), "recvfail %s", ::strerror(errno));
                 return -1;
               }
           }
@@ -233,7 +240,6 @@ namespace velodyne_driver
       {
         // Average the times at which we begin and end reading.  Use that to
         // estimate when the scan occurred. Add the time offset.
-        auto clock_ = std::make_shared<rclcpp::Clock>();
         double time2 = clock_->now().seconds();
         pkt->stamp = rclcpp::Time((time2 + time1) / 2.0 + time_offset);
       }
@@ -258,9 +264,8 @@ namespace velodyne_driver
    *  @param packet_rate expected device packet frequency (Hz)
    *  @param filename PCAP dump file name
    */
-  InputPCAP::InputPCAP(std::shared_ptr<rclcpp::Node> private_nh, uint16_t port,
-                       double packet_rate, std::string filename,
-                       bool read_once, bool read_fast, double repeat_delay):
+  InputPCAP::InputPCAP(rclcpp::Node *private_nh, uint16_t port,
+                       double packet_rate, std::string filename):
     Input(private_nh, port),
     packet_rate_(packet_rate),
     filename_(filename)
@@ -269,9 +274,9 @@ namespace velodyne_driver
     empty_ = true;
 
     // get parameters using private node handle
-    private_nh->get_parameter_or("read_once", read_once_, false);
-    private_nh->get_parameter_or("read_fast", read_fast_, false);
-    private_nh->get_parameter_or("repeat_delay", repeat_delay_, 0.0);
+    private_nh->get_parameter("read_once", read_once_);
+    private_nh->get_parameter("read_fast", read_fast_);
+    private_nh->get_parameter("repeat_delay", repeat_delay_);
 
     if (read_once_)
       {
@@ -326,14 +331,18 @@ namespace velodyne_driver
             // selected IP address.
             if (0 == pcap_offline_filter(&pcap_packet_filter_,
                                           header, pkt_data))
-              continue;
+              {
+                continue;
+              }
 
             // Keep the reader from blowing through the file.
             if (read_fast_ == false)
-              packet_rate_.sleep();
+              {
+                packet_rate_.sleep();
+              }
 
-            memcpy(&pkt->data[0], pkt_data+42, packet_size);
-            auto clock_ = std::make_shared<rclcpp::Clock>();
+            ::memcpy(&pkt->data[0], pkt_data+42, packet_size);
+            (void)time_offset;
             pkt->stamp = clock_->now(); // time_offset not considered here, as no synchronization required
             empty_ = false;
             return 0;                   // success
@@ -342,7 +351,7 @@ namespace velodyne_driver
         if (empty_)                 // no data in file?
           {
             RCLCPP_WARN(private_nh_->get_logger(), "Error %d reading Velodyne packet: %s",
-                     res, pcap_geterr(pcap_));
+                        res, pcap_geterr(pcap_));
             return -1;
           }
 
@@ -355,8 +364,8 @@ namespace velodyne_driver
         if (repeat_delay_ > 0.0)
           {
             RCLCPP_INFO(private_nh_->get_logger(), "end of file reached -- delaying %.3f seconds.",
-                     repeat_delay_);
-            usleep(rint(repeat_delay_ * 1000000.0));
+                        repeat_delay_);
+            ::usleep(::rint(repeat_delay_ * 1000000.0));
           }
 
         RCLCPP_DEBUG(private_nh_->get_logger(), "replaying Velodyne dump file");
