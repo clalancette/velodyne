@@ -108,7 +108,7 @@ namespace velodyne_driver
         perror("socket");               // TODO: ROS_ERROR errno
         return;
       }
-  
+
     sockaddr_in my_addr;                     // my address information
     memset(&my_addr, 0, sizeof(my_addr));    // initialize to zeros
     my_addr.sin_family = AF_INET;            // host byte order
@@ -139,7 +139,6 @@ namespace velodyne_driver
   /** @brief Get one velodyne packet. */
   int InputSocket::getPacket(velodyne_msgs::msg::VelodynePacket *pkt, const double time_offset)
   {
-      
     // Either pass a nodehandle pointer or create a clock object instance
     auto clock_ = std::make_shared<rclcpp::Clock>();
     double time1 = clock_->now().seconds();
@@ -260,7 +259,7 @@ namespace velodyne_driver
     packet_rate_(packet_rate),
     filename_(filename)
   {
-    pcap_ = NULL;  
+    pcap_ = NULL;
     empty_ = true;
 
     // get parameters using private node handle
@@ -320,7 +319,7 @@ namespace velodyne_driver
             // Keep the reader from blowing through the file.
             if (read_fast_ == false)
               packet_rate_.sleep();
-            
+
             memcpy(&pkt->data[0], pkt_data+42, packet_size);
             auto clock_ = std::make_shared<rclcpp::Clock>();
             pkt->stamp = clock_->now(); // time_offset not considered here, as no synchronization required
@@ -340,7 +339,7 @@ namespace velodyne_driver
             RCLCPP_INFO(private_nh_->get_logger(), "end of file reached -- done reading.");
             return -1;
           }
-        
+
         if (repeat_delay_ > 0.0)
           {
             RCLCPP_INFO(private_nh_->get_logger(), "end of file reached -- delaying %.3f seconds.",

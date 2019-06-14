@@ -58,7 +58,7 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
   this->get_parameter_or("model", config_.model, std::string("64E"));
   double packet_rate;                   // packet frequency (Hz)
   std::string model_full_name;
-  if ((config_.model == "64E_S2") || 
+  if ((config_.model == "64E_S2") ||
       (config_.model == "64E_S2.1"))    // generates 1333312 points per second
     {                                   // 1 packet holds 384 points
       packet_rate = 3472.17;            // 1333312 / 384
@@ -94,6 +94,7 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
       RCLCPP_ERROR(this->get_logger(), "unknown Velodyne LIDAR model: " + config_.model);
       packet_rate = 2600.0;
     }
+
   std::string deviceName(std::string("Velodyne ") + model_full_name);
 
   this->get_parameter_or("rpm", config_.rpm, 600.0);
@@ -117,8 +118,8 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
   }
   else if (cut_angle < (2*M_PI))
   {
-      RCLCPP_INFO(this->get_logger(), "Cut at specific angle feature activated. "
-            "Cutting velodyne points always at " + std::to_string(cut_angle) + " rad.");
+    RCLCPP_INFO(this->get_logger(), "Cut at specific angle feature activated. "
+                "Cutting velodyne points always at " + std::to_string(cut_angle) + " rad.");
   }
   else
   {
@@ -126,7 +127,7 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
                  "Allowed range is between 0.0 and 2*PI or negative values to deactivate this feature.");
     cut_angle = -0.01;
   }
-  
+
   // Convert cut_angle from radian to one-hundredth degree,
   // which is used in velodyne packets
   config_.cut_angle = int((cut_angle*360/(2*M_PI))*100);
@@ -157,11 +158,10 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
     }
   else
     {
-      
       // read data from live socket
       input_.reset(new velodyne_driver::InputSocket(shared_from_this() , udp_port));
     }
-  
+
   // raw packet output topic
   output_ =
     this->create_publisher<velodyne_msgs::msg::VelodyneScan>("~/velodyne_packets", 10);
