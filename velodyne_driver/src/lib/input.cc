@@ -77,8 +77,10 @@ namespace velodyne_driver
     private_nh->get_parameter_or("device_ip", devip_str_, std::string(""));
     private_nh->get_parameter_or("gps_time", gps_time_, false);
     if (!devip_str_.empty())
-      RCLCPP_INFO(private_nh->get_logger(),"Only accepting packets from IP address: "
-                       + devip_str_);
+      {
+        RCLCPP_INFO(private_nh->get_logger(),"Only accepting packets from IP address: "
+                    + devip_str_);
+      }
   }
 
   ////////////////////////////////////////////////////////////////////////
@@ -94,10 +96,11 @@ namespace velodyne_driver
     Input(private_nh, port)
   {
     sockfd_ = -1;
-    
-    if (!devip_str_.empty()) {
-      inet_aton(devip_str_.c_str(),&devip_);
-    }    
+
+    if (!devip_str_.empty())
+      {
+        inet_aton(devip_str_.c_str(),&devip_);
+      }
 
     // connect to Velodyne UDP port
     RCLCPP_INFO(private_nh->get_logger(), "Opening UDP socket: port " + std::to_string(port));
@@ -226,17 +229,20 @@ namespace velodyne_driver
                      + std::to_string(nbytes) + " bytes");
       }
 
-    if (!gps_time_) {
-      // Average the times at which we begin and end reading.  Use that to
-      // estimate when the scan occurred. Add the time offset.
-      auto clock_ = std::make_shared<rclcpp::Clock>();
-      double time2 = clock_->now().seconds();
-      pkt->stamp = rclcpp::Time((time2 + time1) / 2.0 + time_offset);
-    } else {
-      // time for each packet is a 4 byte uint located starting at offset 1200 in
-      // the data packet
-      pkt->stamp = rosTimeFromGpsTimestamp(&(pkt->data[1200]));
-    }
+    if (!gps_time_)
+      {
+        // Average the times at which we begin and end reading.  Use that to
+        // estimate when the scan occurred. Add the time offset.
+        auto clock_ = std::make_shared<rclcpp::Clock>();
+        double time2 = clock_->now().seconds();
+        pkt->stamp = rclcpp::Time((time2 + time1) / 2.0 + time_offset);
+      }
+    else
+      {
+        // time for each packet is a 4 byte uint located starting at offset 1200 in
+        // the data packet
+        pkt->stamp = rosTimeFromGpsTimestamp(&(pkt->data[1200]));
+      }
 
     return 0;
   }
@@ -268,12 +274,18 @@ namespace velodyne_driver
     private_nh->get_parameter_or("repeat_delay", repeat_delay_, 0.0);
 
     if (read_once_)
-      RCLCPP_INFO(private_nh->get_logger(), "Read input file only once.");
+      {
+        RCLCPP_INFO(private_nh->get_logger(), "Read input file only once.");
+      }
     if (read_fast_)
-      RCLCPP_INFO(private_nh->get_logger(), "Read input file as quickly as possible.");
+      {
+        RCLCPP_INFO(private_nh->get_logger(), "Read input file as quickly as possible.");
+      }
     if (repeat_delay_ > 0.0)
-      RCLCPP_INFO(private_nh->get_logger(), "Delay %.3f seconds before repeating input file.",
-               repeat_delay_);
+      {
+        RCLCPP_INFO(private_nh->get_logger(), "Delay %.3f seconds before repeating input file.",
+                    repeat_delay_);
+      }
 
     // Open the PCAP dump file
     RCLCPP_INFO(private_nh->get_logger(), "Opening PCAP file \"%s\"", filename_.c_str());

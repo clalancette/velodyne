@@ -113,20 +113,20 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
   double cut_angle;
   this->get_parameter_or("cut_angle", cut_angle, -0.01);
   if (cut_angle < 0.0)
-  {
-    RCLCPP_INFO(this->get_logger(), "Cut at specific angle feature deactivated.");
-  }
+    {
+      RCLCPP_INFO(this->get_logger(), "Cut at specific angle feature deactivated.");
+    }
   else if (cut_angle < (2*M_PI))
-  {
-    RCLCPP_INFO(this->get_logger(), "Cut at specific angle feature activated. "
-                "Cutting velodyne points always at " + std::to_string(cut_angle) + " rad.");
-  }
+    {
+      RCLCPP_INFO(this->get_logger(), "Cut at specific angle feature activated. "
+                  "Cutting velodyne points always at " + std::to_string(cut_angle) + " rad.");
+    }
   else
-  {
-    RCLCPP_ERROR(this->get_logger(),"cut_angle parameter is out of range."
-                 "Allowed range is between 0.0 and 2*PI or negative values to deactivate this feature.");
-    cut_angle = -0.01;
-  }
+    {
+      RCLCPP_ERROR(this->get_logger(),"cut_angle parameter is out of range."
+                   "Allowed range is between 0.0 and 2*PI or negative values to deactivate this feature.");
+      cut_angle = -0.01;
+    }
 
   // Convert cut_angle from radian to one-hundredth degree,
   // which is used in velodyne packets
@@ -177,55 +177,56 @@ bool VelodyneDriver::poll(void)
 {
   // Allocate a new shared pointer for zero-copy sharing with other nodes.
   std::shared_ptr<velodyne_msgs::msg::VelodyneScan> scan = std::make_shared<velodyne_msgs::msg::VelodyneScan>();
-  if( config_.cut_angle >= 0) //Cut at specific angle feature enabled
-  {
-    scan->packets.reserve(config_.npackets);
-    velodyne_msgs::msg::VelodynePacket tmp_packet;
-    while(true)
+  if(config_.cut_angle >= 0) //Cut at specific angle feature enabled
     {
+      scan->packets.reserve(config_.npackets);
+      velodyne_msgs::msg::VelodynePacket tmp_packet;
       while(true)
-      {
-        int rc = input_->getPacket(&tmp_packet, config_.time_offset);
-        if (rc == 0) break;       // got a full packet?
-        if (rc < 0) return false; // end of file reached?
-      }
-      scan->packets.push_back(tmp_packet);
-
-      // Extract base rotation of first block in packet
-      std::size_t azimuth_data_pos = 100*0+2;
-      int azimuth = *( (u_int16_t*) (&tmp_packet.data[azimuth_data_pos]));
-
-      //if first packet in scan, there is no "valid" last_azimuth_
-      if (last_azimuth_ == -1) {
-      	 last_azimuth_ = azimuth;
-      	 continue;
-      }
-      if((last_azimuth_ < config_.cut_angle && config_.cut_angle <= azimuth)
-      	 || ( config_.cut_angle <= azimuth && azimuth < last_azimuth_)
-      	 || (azimuth < last_azimuth_ && last_azimuth_ < config_.cut_angle))
-      {
-        last_azimuth_ = azimuth;
-        break; // Cut angle passed, one full revolution collected
-      }
-      last_azimuth_ = azimuth;
-    }
-  }
-  else // standard behaviour
-  {
-  // Since the velodyne delivers data at a very high rate, keep
-  // reading and publishing scans as fast as possible.
-    scan->packets.resize(config_.npackets);
-    for (int i = 0; i < config_.npackets; ++i)
-    {
-      while (true)
         {
-          // keep reading until full packet received
-          int rc = input_->getPacket(&scan->packets[i], config_.time_offset);
-          if (rc == 0) break;       // got a full packet?
-          if (rc < 0) return false; // end of file reached?
+          while(true)
+            {
+              int rc = input_->getPacket(&tmp_packet, config_.time_offset);
+              if (rc == 0) break;       // got a full packet?
+              if (rc < 0) return false; // end of file reached?
+            }
+          scan->packets.push_back(tmp_packet);
+
+          // Extract base rotation of first block in packet
+          std::size_t azimuth_data_pos = 100*0+2;
+          int azimuth = *( (u_int16_t*) (&tmp_packet.data[azimuth_data_pos]));
+
+          //if first packet in scan, there is no "valid" last_azimuth_
+          if (last_azimuth_ == -1)
+            {
+              last_azimuth_ = azimuth;
+              continue;
+            }
+          if((last_azimuth_ < config_.cut_angle && config_.cut_angle <= azimuth)
+             || ( config_.cut_angle <= azimuth && azimuth < last_azimuth_)
+             || (azimuth < last_azimuth_ && last_azimuth_ < config_.cut_angle))
+            {
+              last_azimuth_ = azimuth;
+              break; // Cut angle passed, one full revolution collected
+            }
+          last_azimuth_ = azimuth;
         }
     }
-  }
+  else // standard behaviour
+    {
+      // Since the velodyne delivers data at a very high rate, keep
+      // reading and publishing scans as fast as possible.
+      scan->packets.resize(config_.npackets);
+      for (int i = 0; i < config_.npackets; ++i)
+        {
+          while (true)
+            {
+              // keep reading until full packet received
+              int rc = input_->getPacket(&scan->packets[i], config_.time_offset);
+              if (rc == 0) break;       // got a full packet?
+              if (rc < 0) return false; // end of file reached?
+            }
+        }
+    }
 
   // publish message using time of last packet read
   RCLCPP_DEBUG(this->get_logger(), "Publishing a full Velodyne scan.");
