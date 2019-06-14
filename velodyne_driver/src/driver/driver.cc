@@ -55,6 +55,7 @@ VelodyneDriver::VelodyneDriver() : rclcpp::Node("velodyne_node")
 {
   this->declare_parameter("device_ip", std::string(""));
   this->declare_parameter("gps_time", false);
+  config_.time_offset = this->declare_parameter("time_offset", 0.0);
   this->declare_parameter("read_once", false);
   this->declare_parameter("read_fast", false);
   this->declare_parameter("repeat_delay", 0.0);
